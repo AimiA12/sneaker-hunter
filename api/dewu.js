@@ -1,10 +1,10 @@
 import axios from 'axios';
 
-// 从 Vercel 环境变量读取，不要把真实的 Key 写在这里
 const DEWU_TOKEN = process.env.DEWU_TOKEN;
 
-export default async function handler(req, res) {
-    // 允许跨域请求
+// Vercel Serverless Function 必须这样导出
+export default async function (req, res) {
+    // 允许跨域
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET');
 
@@ -15,7 +15,7 @@ export default async function handler(req, res) {
     }
 
     if (!DEWU_TOKEN) {
-        return res.status(500).json({ error: "服务器未配置 DEWU_TOKEN，请在 Vercel 后台设置" });
+        return res.status(500).json({ error: "服务器未配置 DEWU_TOKEN" });
     }
 
     try {
@@ -23,18 +23,17 @@ export default async function handler(req, res) {
         const response = await axios.get(dewuUrl, { timeout: 8000 });
 
         if (response.data && response.data.data) {
-            // 提取并简化数据，只给前端需要的部分
-            const formattedData = response.data.data.map(item => ({
-                size: item.size,
-                price: item.price / 100, // 假设单位是分，转为元
-                title: item.title
-            }));
-            res.status(200).json({ formatted_dewu: formattedData });
+            res.status(200).json({ 
+                formatted_dewu: response.data.data.map(item => ({
+                    size: item.size,
+                    price: item.price / 100,
+                    title: item.title
+                }))
+            });
         } else {
-            res.status(404).json({ error: "得物未查询到该货号数据" });
+            res.status(404).json({ error: "得物未查询到该货号" });
         }
     } catch (error) {
-        console.error("得物接口请求失败:", error.message);
-        res.status(502).json({ error: "第三方得物接口暂时无法连接" });
+        res.status(502).json({ error: "第三方接口连接超时" });
     }
 }
