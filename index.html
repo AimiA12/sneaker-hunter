@@ -20,25 +20,27 @@
         </div>
 
         <div id="status" class="mt-4 text-sm text-gray-600 text-center"></div>
-        <div id="result" class="mt-6 prose prose-blue max-w-none whitespace-pre-wrap"></div>
+        <div id="result" class="mt-6 prose prose-blue max-w-none whitespace-pre-wrap text-gray-800"></div>
     </div>
 
     <script type="module">
         import { GoogleGenerativeAI } from "https://esm.run/@google/generative-ai";
 
-        // --- 配置区 ---
-        const API_KEY = "AIzaSyDhuJHcKq9oMIZMb3hEwRJZLWvcvbxzexk"; // 记得填入你的 Gemini API Key
+        // 1. 填入你的 API KEY
+        const API_KEY = "AIzaSyDhuJHcKq9oMIZMb3hEwRJZLWvcvbxzexk";
         const genAI = new GoogleGenerativeAI(API_KEY);
 
-        // --- 1. 每日汇率缓存逻辑 ---
+        // --- 1. 每日汇率缓存逻辑 (保持不变) ---
         async function getDailyRate() {
             const CACHE_KEY = 'daily_rate';
             const today = new Date().toLocaleDateString();
             const cached = localStorage.getItem(CACHE_KEY);
 
             if (cached) {
-                const { rate, date } = JSON.parse(cached);
-                if (date === today) return rate;
+                try {
+                    const { rate, date } = JSON.parse(cached);
+                    if (date === today) return rate;
+                } catch(e) { localStorage.removeItem(CACHE_KEY); }
             }
 
             try {
@@ -52,9 +54,9 @@
             }
         }
 
-        // --- 2. 主查询逻辑 ---
+        // --- 2. 主查询逻辑 (修复了请求和解析) ---
         window.startResearch = async () => {
-            const sku = document.getElementById('skuInput').value.trim();
+            const sku = document.getElementById('skuInput').value.trim().toUpperCase();
             if (!sku) return alert('请输入货号');
 
             const btn = document.getElementById('searchBtn');
@@ -66,40 +68,47 @@
             status.innerText = "正在获取汇率及国内外实时数据...";
 
             try {
-                // 并发请求汇率和两个后端 API
+                // 并发请求：注意这里去掉了所有自定义 Headers，防止 ISO 报错
                 const [rate, dewuRes, stockxRes] = await Promise.all([
                     getDailyRate(),
-                    fetch(`/api/dewu?sku=${sku}`).then(r => r.json()),
-                    fetch(`/api/stockx?sku=${sku}`).then(r => r.json())
+                    fetch(`/api/dewu?sku=${sku}`).then(r => r.ok ? r.json() : {error: "无法获取得物数据"}),
+                    fetch(`/api/stockx?sku=${sku}`).then(r => r.ok ? r.json() : {error: "无法获取StockX数据"})
                 ]);
 
                 status.innerText = "数据获取成功！正在交给 AI 生成比价报告...";
 
                 // --- 3. 调用 Gemini 进行分析 ---
                 const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+                
+                // 增加了空值处理，防止 JSON.stringify 报错导致代码中断
+                const dewuData = dewuRes.formatted_dewu || dewuRes.error || "未查到数据";
+                const stockxData = stockxRes.sales_history || stockxRes.error || "未查到数据";
+
                 const prompt = `
                     今日汇率: 1 USD = ${rate} CNY
                     货号: ${sku}
-                    得物价格: ${JSON.stringify(dewuRes.formatted_dewu || "暂无数据")}
-                    StockX 最近销量: ${JSON.stringify(stockxRes.sales_history || "暂无数据")}
+                    得物价格数据: ${JSON.stringify(dewuData)}
+                    StockX 最近销量数据: ${JSON.stringify(stockxData)}
                     
                     任务：
                     1. 将 StockX 的美元成交价按汇率 ${rate} 转换为人民币。
-                    2. 分析得物与 StockX 的差价。
-                    3. 统计各尺码在最近 30 天的销售热度。
+                    2. 分析得物与 StockX 的差价，指出哪个平台更划算。
+                    3. 统计该货号的热度。
                     4. 生成一份 Markdown 格式的对比表格，并给出投资建议。
+                    注意：请使用中文回答。
                 `;
 
                 const result = await model.generateContent(prompt);
                 const response = await result.response;
                 
-                // 将 Markdown 文本显示到页面
+                // 渲染结果
                 resultDiv.innerText = response.text();
                 status.innerText = "分析完成";
 
             } catch (err) {
-                console.error(err);
-                status.innerText = "查询出错，请重试（检查后端 API 是否在线）";
+                console.error("详细错误:", err);
+                status.innerText = "查询出错，请检查 API Key 或重试";
+                resultDiv.innerHTML = `<p class="text-red-500 text-sm">错误原因: ${err.message}</p>`;
             } finally {
                 btn.disabled = false;
             }
