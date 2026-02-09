@@ -20,14 +20,14 @@
         </div>
 
         <div id="status" class="mt-4 text-sm text-gray-600 text-center"></div>
-        <div id="result" class="mt-6 prose prose-blue max-w-none"></div>
+        <div id="result" class="mt-6 prose prose-blue max-w-none whitespace-pre-wrap"></div>
     </div>
 
     <script type="module">
         import { GoogleGenerativeAI } from "https://esm.run/@google/generative-ai";
 
-        // 你的 Gemini API KEY
-        const API_KEY = "这里替换成你的API_KEY";
+        // --- 配置区 ---
+        const API_KEY = "AIzaSyDhuJHcKq9oMIZMb3hEwRJZLWvcvbxzexk"; // 记得填入你的 Gemini API Key
         const genAI = new GoogleGenerativeAI(API_KEY);
 
         // --- 1. 每日汇率缓存逻辑 ---
@@ -80,8 +80,8 @@
                 const prompt = `
                     今日汇率: 1 USD = ${rate} CNY
                     货号: ${sku}
-                    得物价格: ${JSON.stringify(dewuRes.formatted_dewu)}
-                    StockX 最近销量: ${JSON.stringify(stockxRes.sales_history)}
+                    得物价格: ${JSON.stringify(dewuRes.formatted_dewu || "暂无数据")}
+                    StockX 最近销量: ${JSON.stringify(stockxRes.sales_history || "暂无数据")}
                     
                     任务：
                     1. 将 StockX 的美元成交价按汇率 ${rate} 转换为人民币。
@@ -93,13 +93,13 @@
                 const result = await model.generateContent(prompt);
                 const response = await result.response;
                 
-                // 将 Markdown 渲染到页面（这里简单处理，实际可用 marked.js）
+                // 将 Markdown 文本显示到页面
                 resultDiv.innerText = response.text();
                 status.innerText = "分析完成";
 
             } catch (err) {
                 console.error(err);
-                status.innerText = "查询出错，请稍后重试";
+                status.innerText = "查询出错，请重试（检查后端 API 是否在线）";
             } finally {
                 btn.disabled = false;
             }
